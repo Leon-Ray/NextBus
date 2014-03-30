@@ -5,7 +5,6 @@ Purpose
 -------
 Archive real time NextBus GPS data for the specified agency, route, and duration.
 
-
 Author 
 ------
 Leon Raykin
