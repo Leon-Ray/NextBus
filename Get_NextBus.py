@@ -97,7 +97,7 @@ def repeat():
                 lon = str(raw.get('lon'))
                 temp.append(lon)
                 dup.append(temp)
-        return dup
+
                 
 #Writes backup XML files
 counter = 1
@@ -113,7 +113,6 @@ def backup():
         f.write(data)
         f.close()
         counter += 1
-        return counter
 
 
 #Pings the XML feed and collects data for the specified duration
