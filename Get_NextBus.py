@@ -77,7 +77,7 @@ def repeat():
         ulocation = urllib.urlopen('http://webservices.nextbus.com/service/publicXMLFeed?command=vehicleLocations&a=%s&r=%s&t=0' % (agency_entry, route_entry))
         list = parse(ulocation)
 
-        global dup
+        global dup #declaring as a global variable is a simple solution for keeping track of duplicate records
         for raw in list.findall('vehicle'):
                 duplicates = 0
                 for i in dup:
@@ -106,7 +106,7 @@ if not os.path.exists(r'%sbackup' % directory_entry):
         os.makedirs(r'%sbackup' % directory_entry)
         
 def backup():
-        global counter
+        global counter #declaring as a global variable is a simple solution for keeping track of ping count
         ulocation = urllib.urlopen('http://webservices.nextbus.com/service/publicXMLFeed?command=vehicleLocations&a=%s&r=%s&t=0' % (agency_entry, route_entry))
         data = ulocation.read()
         f = open (r'%s\backup\%s%s_%s.xml' % (directory_entry, agency_entry, route_entry, counter), 'wb')
