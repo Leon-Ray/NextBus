@@ -52,8 +52,8 @@ length = float(time_entry)*multiplier*60
 
 #Writes location data to CSV file
 directory_entry = raw_input("Please specify the directory where you wish to save the file (e.g. C:\Users\Lraykin\Desktop\): ")
-if not directory_entry[-1] == '\\':
-        directory_entry = directory_entry + '\\'
+if not directory_entry[-1] == '/':
+        directory_entry = directory_entry + '/'
 
 if not os.path.exists (r'%s%s%s.csv' % (directory_entry, agency_entry, route_entry)):
         c = open(r'%s%s%s.csv' % (directory_entry, agency_entry, route_entry), 'wb')
