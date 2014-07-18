@@ -1,137 +1,130 @@
 # --------------------
 # Name: Get_NextBus.py
 # Purpose: Archive real time NextBus GPS data for the specified agency, route, and duration.
-# Last Modified: 4/1/2013
 # Author: Leon Raykin
 # Python Version: 2.7
 # --------------------
 
-import urllib
-import time
-from xml.etree.ElementTree import parse
 import csv
 import os
+import urllib
+from xml.etree.ElementTree import parse
+from datetime import datetime
+import time
 
-#List of agencies
-uagencies = urllib.urlopen('http://webservices.nextbus.com/service/publicXMLFeed?command=agencyList')
-agencies = {}
-dict_count = 1
-list = parse(uagencies)
-for agency in list.findall('agency'):
-	agencies[dict_count]=(agency.get('tag'))
-	dict_count += 1
+basepath = 'C:/Users/lraykin.ITERIS/Desktop/Nextbus/'
+refresh_rate = 15 #number of seconds between refreshing the data feed
 
-for key in agencies:
-    print str(key) + ' ' + agencies[key]
+def main():
+    duration_secs = set_duration()
+    nb = NextBus()
+    agency = nb.set_agency()
+    route = nb.set_route(agency)
+    start_time = time.time()
+    while (time.time() < start_time+duration_secs): 
+        nb.get_data(agency, route)
+        nb.remove_duplicates(refresh_rate)
+        nb.add_timestamp()
+        nb.export_csv(basepath)
+        nb.download_xml(basepath)
+        time.sleep(refresh_rate)
+    print 'Data collection completed at ' + datetime.now().strftime('%Y-%m-%d %H:%M:%S') + '.'
 
-agency_entry = agencies[input("Please select an agency from the above list (type the number only): ")]
+def set_duration():
+    duration_type = raw_input('How long would you like to collect data for? Begin by specifying "minutes", "hours", or "days": ')
+    def to_secs(duration_type):
+        if duration_type == 'minutes':
+            return 60
+        if duration_type == 'hours':
+            return 3600
+        if duration_type == 'days':
+            return 86400
+    duration = raw_input('How many ' + duration_type + ' of data would you like to collect? ')
+    seconds = float(duration)*to_secs(duration_type)
+    return seconds
 
-#List of routes
-uroutes = urllib.urlopen('http://webservices.nextbus.com/service/publicXMLFeed?command=routeList&a=%s' % agency_entry)
-routes = []
-list = parse(uroutes)
-for route in list.findall('route'):
-	routes.append(route.get('tag'))
-
-for i in routes:
-        print i
-
-route_entry = raw_input("Please select a route from the above list: ")
-
-#Duration of data collection
-duration_entry = raw_input("How long would you like to collect data for? Begin by specifying 'minutes', 'hours', or 'days' ")
-if duration_entry == 'minutes':
-        multiplier = 1
-elif duration_entry == 'hours':
-        multiplier = 60
-elif duration_entry == 'days':
-        multiplier = 1440
-
-time_entry = raw_input('How many ' + duration_entry + ' of data would you like to collect? Decimals are OK. ')
-length = float(time_entry)*multiplier*60
-
-#Writes location data to CSV file
-directory_entry = raw_input("Please specify the directory where you wish to save the file (e.g. C:\Users\Lraykin\Desktop\): ")
-if not directory_entry[-1] == '/':
-        directory_entry = directory_entry + '/'
-
-if not os.path.exists (r'%s%s%s.csv' % (directory_entry, agency_entry, route_entry)):
-        c = open(r'%s%s%s.csv' % (directory_entry, agency_entry, route_entry), 'wb')
-else:
-        x = 1
-        for i in range(10):
-                if os.path.exists (r'%s%s%s_%s.csv' % (directory_entry, agency_entry, route_entry, x)):
-                        x += 1
-                else:
-                        c = open(r'%s%s%s_%s.csv' % (directory_entry, agency_entry, route_entry, x), 'wb')
-                        break
-
-writer = csv.writer(c)
-writer.writerow(['Route', 'Bus_ID', 'Latitude', 'Longitude', 'Direction', 'Heading', 'Speed_kmh', 'Epoch_Time', 'Date', 'Time'])
-
-start_time = time.time()
-dup = []
-
-attempt = 1
-def repeat():      
-        ulocation = urllib.urlopen('http://webservices.nextbus.com/service/publicXMLFeed?command=vehicleLocations&a=%s&r=%s&t=0' % (agency_entry, route_entry))
-        list = parse(ulocation)
-
-        global dup #declaring as a global variable is a simple solution for keeping track of duplicate records
-        for raw in list.findall('vehicle'):
-                duplicates = 0
-                for i in dup:
-                        if (raw.get('lat') == i[0] and raw.get('lon') == i[1]):
-                                duplicates += 1
-                if duplicates < 1:
-                        epoch_time = time.time()-int(raw.get('secsSinceReport'))
-                        report_date = time.strftime('%x', time.localtime(epoch_time))
-                        report_time = time.strftime('%X', time.localtime(epoch_time))
-                        writer.writerow([raw.get('routeTag'), raw.get('id'), raw.get('lat'), raw.get('lon'), raw.get('dirTag'), raw.get('heading'), raw.get('speedKmHr'), epoch_time, report_date, report_time])
-        
-        dup = []
-        for raw in list.findall('vehicle'):
-                temp = []
-                lat = str(raw.get('lat'))
-                temp.append(lat)
-                lon = str(raw.get('lon'))
-                temp.append(lon)
-                dup.append(temp)
-
-                
-#Writes backup XML files
-counter = 1
-
-if not os.path.exists(r'%sbackup' % directory_entry):
-        os.makedirs(r'%sbackup' % directory_entry)
-        
-def backup():
-        global counter #declaring as a global variable is a simple solution for keeping track of ping count
-        ulocation = urllib.urlopen('http://webservices.nextbus.com/service/publicXMLFeed?command=vehicleLocations&a=%s&r=%s&t=0' % (agency_entry, route_entry))
-        data = ulocation.read()
-        f = open (r'%s\backup\%s%s_%s.xml' % (directory_entry, agency_entry, route_entry, counter), 'wb')
-        f.write(data)
+class NextBus():
+    def __init__(self):
+        self.count = 0
+    def set_agency(self):
+        uagencies = urllib.urlopen('http://webservices.nextbus.com/service/publicXMLFeed?command=agencyList')
+        agencies = parse(uagencies)
+        agency_dict = {}
+        count = 1
+        for agency in agencies.findall('agency'):
+            agency_dict[count]=(agency.get('tag'))
+            count += 1
+        for key, value in agency_dict.iteritems():
+            print str(key) + ' ' + value
+        self.agency = agency_dict[input('Enter the desired agency number shown above: ')]
+        return self.agency
+    def set_route(self, agency=None):
+        if agency:
+            self.agency = agency
+        uroutes = urllib.urlopen('http://webservices.nextbus.com/service/publicXMLFeed?command=routeList&a=' + self.agency)
+        routes = parse(uroutes)
+        route_list = []
+        for route in routes.findall('route'):
+            route_list.append(route.get('tag'))
+        for route in route_list:
+            print route
+        self.route = raw_input('Select a route from the above list: ')   
+        return self.route
+    def get_data(self, agency=None, route=None):
+        if agency:
+            self.agency = agency
+        if route:
+            self.route = route
+        self.data = []
+        self.headers = ['id', 'routeTag', 'dirTag', 'lat', 'lon', 'secsSinceReport', 'predictable', 'heading', 'speedKmHr']
+        self.dl_time = time.time()
+        ulocation = urllib.urlopen('http://webservices.nextbus.com/service/publicXMLFeed?command=vehicleLocations&a=%s&r=%s&t=0' % (self.agency, self.route))
+        xml_data = parse(ulocation)
+        for raw in xml_data.findall('vehicle'):
+            record = {}
+            for field in self.headers:
+                record[field] = raw.get(field)
+            self.data.append(record)
+        self.count += 1
+        print 'Download Count: ' + str(self.count) + '\t Agency: ' + self.agency + '\t Route: ' + self.route + '\t Number of Records: ' + str(len(self.data)) + '\t Time: ' +  datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        return self.data
+    def remove_duplicates(self, refresh_rate):
+        before_len = len(self.data)
+        if self.count > 1:
+            self.data = [record for record in self.data if int(record['secsSinceReport']) < refresh_rate] 
+        after_len = len(self.data)
+        print 'Removed ' + str(before_len-after_len) + ' duplicates.'
+    def add_timestamp(self):
+        for record in self.data:
+             bus_time = self.dl_time - int(record['secsSinceReport'])
+             record['UTC_timestamp'] = time.strftime('%m/%d/%Y %H:%M:%S',  time.gmtime(bus_time))
+        self.headers.append('UTC_timestamp')
+        print 'Added UTC timestamp to data.'
+    def export_csv(self, basepath, agency=None, route=None):
+        if agency:
+            self.agency = agency
+        if route:
+            self.route = route
+        outfileName = open(basepath + self.agency + self.route + '.csv', 'ab')
+        outfile = csv.writer(outfileName)  
+        if self.count == 1:
+            outfile.writerow(self.headers)
+        for record in self.data:
+            data = []
+            for column in self.headers:
+                data.append(record[column])
+            outfile.writerow(data)
+        outfileName.close()
+        print "Added " + str(len(self.data)) + " records to csv file."
+    def download_xml(self, basepath, agency=None, route=None): #secsSinceReport will not match data in csv file
+        if not os.path.exists(basepath + 'backup'):
+            os.makedirs(basepath + 'backup')
+        ulocation = urllib.urlopen('http://webservices.nextbus.com/service/publicXMLFeed?command=vehicleLocations&a=%s&r=%s&t=0' % (self.agency, self.route))
+        xml_data = ulocation.read()
+        f = open(basepath + 'backup/' + self.agency + self.route + '_' + str(self.count) + '.xml', 'wb')
+        f.write(xml_data)
         f.close()
-        counter += 1
+        print 'Downloaded one backup xml file. \n'
 
-
-#Pings the XML feed and collects data for the specified duration
-while (time.time() < start_time+float(length)):
-        try:
-                repeat()
-                backup()
-                time.sleep(30)
-        except:
-                if attempt < 11:
-                        print 'An error occurred.  Retry attempt ' + str(attempt) + ' of 10.'
-                        time.sleep(60)
-                        repeat()
-                        backup()
-                        attempt += 1
-                else:
-                        print 'An error occured.  Download could not be completed.'
-                        c.close()
-                
-c.close()
-
-print 'Data Collection Complete!'
+if __name__ == '__main__':
+    main()
