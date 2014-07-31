@@ -12,8 +12,8 @@ from xml.etree.ElementTree import parse
 from datetime import datetime
 import time
 
-basepath = 'C:/Users/lraykin.ITERIS/Desktop/Nextbus/'
-refresh_rate = 15 #number of seconds between refreshing the data feed
+basepath = 'C:/Users/Leon/Desktop/Nextbus/'
+refresh_rate = 30 #number of seconds between refreshing the data feed
 
 def main():
     duration_secs = set_duration()
@@ -44,8 +44,14 @@ def set_duration():
     return seconds
 
 class NextBus():
+    
     def __init__(self):
+        self.agency = ""
+        self.route = ""
+        self.data = []        
+        self.headers = []
         self.count = 0
+    
     def set_agency(self):
         uagencies = urllib.urlopen('http://webservices.nextbus.com/service/publicXMLFeed?command=agencyList')
         agencies = parse(uagencies)
@@ -58,6 +64,7 @@ class NextBus():
             print str(key) + ' ' + value
         self.agency = agency_dict[input('Enter the desired agency number shown above: ')]
         return self.agency
+    
     def set_route(self, agency=None):
         if agency:
             self.agency = agency
@@ -70,6 +77,7 @@ class NextBus():
             print route
         self.route = raw_input('Select a route from the above list: ')   
         return self.route
+    
     def get_data(self, agency=None, route=None):
         if agency:
             self.agency = agency
@@ -88,18 +96,21 @@ class NextBus():
         self.count += 1
         print 'Download Count: ' + str(self.count) + '\t Agency: ' + self.agency + '\t Route: ' + self.route + '\t Number of Records: ' + str(len(self.data)) + '\t Time: ' +  datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         return self.data
+    
     def remove_duplicates(self, refresh_rate):
         before_len = len(self.data)
         if self.count > 1:
             self.data = [record for record in self.data if int(record['secsSinceReport']) < refresh_rate] 
         after_len = len(self.data)
         print 'Removed ' + str(before_len-after_len) + ' duplicates.'
+    
     def add_timestamp(self):
         for record in self.data:
-             bus_time = self.dl_time - int(record['secsSinceReport'])
-             record['UTC_timestamp'] = time.strftime('%m/%d/%Y %H:%M:%S',  time.gmtime(bus_time))
+            bus_time = self.dl_time - int(record['secsSinceReport'])
+            record['UTC_timestamp'] = time.strftime('%m/%d/%Y %H:%M:%S',  time.gmtime(bus_time))
         self.headers.append('UTC_timestamp')
         print 'Added UTC timestamp to data.'
+    
     def export_csv(self, basepath, agency=None, route=None):
         if agency:
             self.agency = agency
@@ -116,6 +127,7 @@ class NextBus():
             outfile.writerow(data)
         outfileName.close()
         print "Added " + str(len(self.data)) + " records to csv file."
+    
     def download_xml(self, basepath, agency=None, route=None): #secsSinceReport will not match data in csv file
         if not os.path.exists(basepath + 'backup'):
             os.makedirs(basepath + 'backup')
